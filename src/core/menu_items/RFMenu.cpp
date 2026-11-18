@@ -12,12 +12,14 @@
 #include "modules/rf/rf_spectrum.h"
 #include "modules/rf/rf_utils.h"
 #include "modules/rf/rf_waterfall.h"
+#include "modules/rf/rf_protopirate.h"
 
 void RFMenu::optionsMenu() {
     options = {
         {"Scan/copy",       [=]() { RFScan(); }       },
         {"Freq Analyzer",   rf_analyzer               },
 #if !defined(LITE_VERSION)
+        {"ProtoPirate",     rf_protopirate            },
         {"Record RAW",      rf_raw_record             }, // Pablo-Ortiz-Lopez
         {"Custom SubGhz",   sendCustomRF              },
 #endif

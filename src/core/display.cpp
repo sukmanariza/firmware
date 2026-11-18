@@ -1,4 +1,5 @@
 #include "display.h"
+#include "hal/power/gauge.h"
 #include "core/wifi/webInterface.h" // for server
 #include "core/wifi/wg.h"           //for isConnectedWireguard to print wireguard lock
 #include "mykeyboard.h"
@@ -35,7 +36,8 @@ void panelSleep(bool on) {
     tft.setSleepMode(on);
 }
 
-bool __attribute__((weak)) isCharging() { return false; }
+// Boards without their own isCharging() fall back to the HAL (gauge IC or analog divider heuristic)
+bool __attribute__((weak)) isCharging() { return hal_gauge_is_charging(); }
 /***************************************************************************************
 ** Function name: displayScrollingText
 ** Description:   Scroll large texts into screen
@@ -552,10 +554,13 @@ struct OptionsPage {
     bool pageDown;
 };
 
-static std::vector<OptionsPage> buildOptionPages(int arraySize) {
+static std::vector<OptionsPage> buildOptionPages(int arraySize, bool compact = false) {
     int rowHeightPx = FM * LH + 4;
     int32_t margin = 10; // matches Launcher's tftHeight-20 (10px top+bottom)
     int fitRows = (tftHeight - 2 * margin) / rowHeightPx;
+    // Compact context menus sit over their caller's screen; keep them small
+    // even when there are many actions. The existing paging handles the rest.
+    if (compact && fitRows > 5) fitRows = 5;
     if (fitRows < 1) fitRows = 1;
 
     std::vector<OptionsPage> pages;
@@ -595,7 +600,7 @@ static std::vector<OptionsPage> buildOptionPages(int arraySize) {
 
 int loopOptions(
     std::vector<Option> &options, uint8_t menuType, const char *subText, int index, bool interpreter,
-    bool letterShortcuts, uint16_t pageJumpSize, bool border
+    bool letterShortcuts, uint16_t pageJumpSize, bool border, bool compact
 ) {
     if (options.empty()) return -1;
 
@@ -641,7 +646,7 @@ int loopOptions(
     int devModeCounter = 0;
     static unsigned long _clock_bat_timer = millis();
     if (options.size() > MAX_MENU_SIZE) { menuSize = MAX_MENU_SIZE; }
-    if (index > 0) {
+    if (index > 0 && !compact) {
         if (border)
             tft.fillRoundRect(
                 tftWidth * 0.10,
@@ -672,7 +677,7 @@ int loopOptions(
     const int escX = tftWidth - BORDER_OFFSET_FROM_SCREEN_EDGE - 2 - escW;
     const int escY = BORDER_OFFSET_FROM_SCREEN_EDGE + 2;
 #endif
-    drawMainBorder();
+    if (!compact) drawMainBorder();
     while (1) {
         // Check for shutdown before drawing menu to avoid drawing a black bar on the screen
         if (exit) break;
@@ -709,7 +714,8 @@ int loopOptions(
                         bruceConfig.secColor,
                         bruceConfig.bgColor,
                         firstRender,
-                        border
+                        border,
+                        compact
                     );
             }
             if (firstRender) menuOpenTs = millis();
@@ -802,7 +808,7 @@ int loopOptions(
             int optSize = static_cast<int>(options.size());
             if (check(NextPagePress)) {
                 int target = optSize - 1; // last page: clamp to last item (legacy behavior)
-                std::vector<OptionsPage> pages = buildOptionPages(optSize);
+                std::vector<OptionsPage> pages = buildOptionPages(optSize, compact);
                 for (size_t p = 0; p < pages.size(); ++p) {
                     if (index >= pages[p].start && index < pages[p].start + pages[p].count) {
                         if (p + 1 < pages.size()) target = pages[p + 1].start;
@@ -817,7 +823,7 @@ int loopOptions(
             }
             if (check(PrevPagePress)) {
                 int target = 0; // first page: clamp to first item (legacy behavior)
-                std::vector<OptionsPage> pages = buildOptionPages(optSize);
+                std::vector<OptionsPage> pages = buildOptionPages(optSize, compact);
                 for (size_t p = 0; p < pages.size(); ++p) {
                     if (index >= pages[p].start && index < pages[p].start + pages[p].count) {
                         if (p > 0) target = pages[p - 1].start;
@@ -1045,7 +1051,7 @@ void progressHandler(int progress, size_t total, const String &message) {
 ***************************************************************************************/
 Opt_Coord drawOptions(
     int index, std::vector<Option> &options, uint16_t fgcolor, uint16_t selcolor, uint16_t bgcolor,
-    bool firstRender, bool border
+    bool firstRender, bool border, bool compact
 ) {
     static int last_index = 0;
     static int last_init = -1;
@@ -1059,12 +1065,13 @@ Opt_Coord drawOptions(
 
     int rowHeightPx = FM * LH + 4;
     int32_t margin = 10; // matches Launcher's tftHeight-20 (10px top+bottom) for both border states
-    // NOTE: visible-row capacity (fitRows) lives in buildOptionPages() now.
+    // NOTE: visible-row capacity (fitRows, including the compact cap) lives in
+    // buildOptionPages() so paging and drawing cannot disagree.
 
     int arraySize = static_cast<int>(options.size());
 
     // Page layout shared with loopOptions() page jumps (see buildOptionPages).
-    std::vector<OptionsPage> pages = buildOptionPages(arraySize);
+    std::vector<OptionsPage> pages = buildOptionPages(arraySize, compact);
     bool needsPaging = pages.size() > 1;
     int maxRowsAcrossPages = 0;
     for (const auto &pg : pages) {

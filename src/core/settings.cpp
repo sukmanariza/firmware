@@ -1852,6 +1852,7 @@ void setTheme() {
 #ifdef HAS_RGB_LED
              bruceConfig.ledBright = 50;
              bruceConfig.ledColor = 0x960064;
+             bruceConfig.ledEnabled = 1;
              bruceConfig.ledEffect = 0;
              bruceConfig.ledEffectSpeed = 5;
              bruceConfig.ledEffectDirection = 1;
@@ -1912,7 +1913,7 @@ bool appStoreInstalled() {
         return false;
     }
 
-    return fs->exists("/BruceJS/Tools/App Store.js");
+    return fs->exists("/BruceJS/Tools/App Store.bin");
 }
 
 #include <HTTPClient.h>
@@ -1945,7 +1946,7 @@ void installAppStoreJS() {
     }
 
     HTTPClient http;
-    http.begin("https://ghp.iceis.co.uk/service/appstore/");
+    http.begin("http://appstore.bruce.computer/service/appstorebin/");
     int httpCode = http.GET();
     if (httpCode != 200) {
         http.end();
@@ -1953,7 +1954,7 @@ void installAppStoreJS() {
         return;
     }
 
-    File file = fs->open("/BruceJS/Tools/App Store.js", FILE_WRITE);
+    File file = fs->open("/BruceJS/Tools/App Store.bin", FILE_WRITE);
     if (!file) {
         displayWarning("Failed to save App Store", true);
         return;
@@ -1961,6 +1962,11 @@ void installAppStoreJS() {
     file.print(http.getString());
     http.end();
     file.close();
+
+    // Check for old App Store.js and delete if found
+    if (fs->exists("/BruceJS/Tools/App Store.js")) {
+        fs->remove("/BruceJS/Tools/App Store.js");
+    }
 
     displaySuccess("App Store installed", true);
     displaySuccess("Goto JS Interpreter -> Tools -> App Store", true);
