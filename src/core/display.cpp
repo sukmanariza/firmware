@@ -1,7 +1,7 @@
 #include "display.h"
-#include "hal/power/gauge.h"
 #include "core/wifi/webInterface.h" // for server
 #include "core/wifi/wg.h"           //for isConnectedWireguard to print wireguard lock
+#include "hal/power/gauge.h"
 #include "mykeyboard.h"
 #include "settings.h" //for timeStr
 #include "utils.h"
@@ -938,8 +938,7 @@ int loopOptions(
                         vTaskDelay(10 / portTICK_RATE_MS);
                     }
                     tft.drawArc(
-                        tftWidth / 2, tftHeight / 2, 25, 15, 0, 360, bruceConfig.bgColor,
-                        bruceConfig.bgColor
+                        tftWidth / 2, tftHeight / 2, 25, 15, 0, 360, bruceConfig.bgColor, bruceConfig.bgColor
                     );
                     LongPress = false;
 #endif
@@ -1041,8 +1040,15 @@ void progressHandler(int progress, size_t total, const String &message) {
         displayRedStripe(message, TFT_WHITE, bruceConfig.priColor);
     }
     float frac = (total > 0) ? (float)progress / (float)total : 0;
-    drawBar(2 * BORDER_PAD_X, barY, tftWidth - 4 * BORDER_PAD_X, barHeight, frac, bruceConfig.priColor,
-            bruceConfig.bgColor);
+    drawBar(
+        2 * BORDER_PAD_X,
+        barY,
+        tftWidth - 4 * BORDER_PAD_X,
+        barHeight,
+        frac,
+        bruceConfig.priColor,
+        bruceConfig.bgColor
+    );
 }
 
 /***************************************************************************************
@@ -1300,9 +1306,7 @@ void drawSubmenu(int index, std::vector<Option> &options, const char *title) {
     tft.drawString(title, BORDER_PAD_X, STATUS_BAR_HEIGHT);
 
     auto rgb565 = [](uint8_t r, uint8_t g, uint8_t b) -> uint16_t {
-        return static_cast<uint16_t>(((r & 0xF8) << 8) |
-                                     ((g & 0xFC) << 3) |
-                                     (b >> 3));
+        return static_cast<uint16_t>(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3));
     };
 
     auto mixColor = [&](uint16_t a, uint16_t b, uint8_t amount) -> uint16_t {
@@ -1340,12 +1344,10 @@ void drawSubmenu(int index, std::vector<Option> &options, const char *title) {
 
         tft.drawRoundRect(x, y, w, h, 5, borderColor);
 
-        const uint16_t gradientStart = selected
-            ? mixColor(background, background, 45)
-            : mixColor(background, secondary, 18);
-        const uint16_t gradientEnd = selected
-            ? mixColor(background, background, 45)
-            : mixColor(background, secondary, 55);
+        const uint16_t gradientStart =
+            selected ? mixColor(background, background, 45) : mixColor(background, secondary, 18);
+        const uint16_t gradientEnd =
+            selected ? mixColor(background, background, 45) : mixColor(background, secondary, 55);
 
         const int innerX = x + 2;
         const int innerY = y + 2;
@@ -1374,18 +1376,26 @@ void drawSubmenu(int index, std::vector<Option> &options, const char *title) {
     }
 
     // Thin scrollbar on the right shows the current position in the submenu.
-    tft.fillRect(tftWidth - BORDER_OFFSET_FROM_SCREEN_EDGE, 0,
-                 BORDER_OFFSET_FROM_SCREEN_EDGE, tftHeight, background);
+    tft.fillRect(
+        tftWidth - BORDER_OFFSET_FROM_SCREEN_EDGE, 0, BORDER_OFFSET_FROM_SCREEN_EDGE, tftHeight, background
+    );
     const int indicatorH = max(4, tftHeight / menuSize);
     const int indicatorY = (index * (tftHeight - indicatorH)) / max(1, menuSize - 1);
-    tft.fillRoundRect(tftWidth - BORDER_OFFSET_FROM_SCREEN_EDGE, indicatorY,
-                      BORDER_OFFSET_FROM_SCREEN_EDGE, indicatorH, 2, primary);
+    tft.fillRoundRect(
+        tftWidth - BORDER_OFFSET_FROM_SCREEN_EDGE,
+        indicatorY,
+        BORDER_OFFSET_FROM_SCREEN_EDGE,
+        indicatorH,
+        2,
+        primary
+    );
 
 #if defined(HAS_TOUCH)
     tft.setTextColor(getColorVariation(bruceConfig.priColor), bruceConfig.bgColor);
     int escW = 5 * LW * FM + 4;
-    tft.drawString("[ x ]", tftWidth - BORDER_OFFSET_FROM_SCREEN_EDGE - 2 - escW,
-                   BORDER_OFFSET_FROM_SCREEN_EDGE + 2, 1);
+    tft.drawString(
+        "[ x ]", tftWidth - BORDER_OFFSET_FROM_SCREEN_EDGE - 2 - escW, BORDER_OFFSET_FROM_SCREEN_EDGE + 2, 1
+    );
     TouchFooter();
 #endif
 }

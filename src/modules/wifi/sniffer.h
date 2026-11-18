@@ -73,8 +73,6 @@ bool sniffer_is_handshake_crackable(uint64_t key);
 bool sniffer_ap_has_partial(uint64_t key);
 // Number of distinct client MACs observed on an AP (0 when none known).
 uint16_t sniffer_count_clients(const uint8_t bssid[6]);
-// Total distinct clients observed across all APs (for live progress).
-uint32_t sniffer_total_clients();
 // APs that have observed clients but were never in a scan list (beacon
 // missed, 4-addr/WDS frames, ...). Returns count; fills BSSIDs + the channel
 // each was first heard on. Lets callers recover clients the AP scan missed.

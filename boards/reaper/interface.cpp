@@ -156,9 +156,8 @@ void _setBrightness(uint8_t brightval) { hal_bright_set(TFT_BL, brightval); }
 ** Function: InputHandler
 ** Handles the variables PrevPress, NextPress, SelPress, AnyKeyPress and EscPress
 **
-** Reaper uses a fixed mapping instead of hal_buttons_poll_6(): the shared
-** poller pages on UP/DOWN, while this D-pad pages with LEFT/RIGHT only.
-** Ported onto the HAL refactor; keep the mapping when the board file moves.
+** Not hal_buttons_poll_6(): that poller pages on UP/DOWN, this D-pad pages
+** with LEFT/RIGHT only.
 **********************************************************************/
 void InputHandler(void) {
     static unsigned long tm = 0;
@@ -194,12 +193,8 @@ void InputHandler(void) {
         // DOWN = single step only (never pages).
         DownPress = true;
     }
-    if (!_s) {
-        SelPress = true;
-    }
-    if (!_e) {
-        EscPress = true;
-    }
+    if (!_s) { SelPress = true; }
+    if (!_e) { EscPress = true; }
 }
 
 /*********************************************************************

@@ -216,9 +216,7 @@ static void observeClient(uint64_t apKey, const uint8_t client[6], const uint8_t
 static void markHandshakeCrackable(uint64_t key);
 // Parse the client IP out of a data frame (ARP or IPv4 over LLC/SNAP).
 // Returns true and fills ipOut when an address belonging to client was found.
-static bool parseClientIp(
-    const uint8_t *frame, uint16_t len, const uint8_t client[6], uint8_t ipOut[4]
-);
+static bool parseClientIp(const uint8_t *frame, uint16_t len, const uint8_t client[6], uint8_t ipOut[4]);
 
 // --- New helper prototypes ---
 static void cleanupStaleBeacons();
@@ -302,8 +300,8 @@ int classifyEapolMessage(const wifi_promiscuous_pkt_t *pkt) {
     bool mic = keyInfo & (1 << 8);
     bool secure = keyInfo & (1 << 9);
 
-    if (ack && !mic && !install) return 1;            // Message 1
-    if (ack && mic) return 3;                         // Message 3
+    if (ack && !mic && !install) return 1; // Message 1
+    if (ack && mic) return 3;              // Message 3
 
     if (!ack && mic && !install) {
         // Frame is from Station to AP: either Message 2 or Message 4.
@@ -316,11 +314,11 @@ int classifyEapolMessage(const wifi_promiscuous_pkt_t *pkt) {
         int keyDataLenOffset = keyInfoOffset + 92;
         if (pkt->rx_ctrl.sig_len >= keyDataLenOffset + 2) {
             uint16_t keyDataLen = (payload[keyDataLenOffset] << 8) | payload[keyDataLenOffset + 1];
-            if (keyDataLen == 0) return 4;            // Message 4
-            return 2;                                 // Message 2
+            if (keyDataLen == 0) return 4; // Message 4
+            return 2;                      // Message 2
         }
-        if (secure) return 4;                         // Message 4 fallback
-        return 2;                                     // Message 2 fallback
+        if (secure) return 4; // Message 4 fallback
+        return 2;             // Message 2 fallback
     }
 
     return -1; // Unknown
@@ -514,7 +512,7 @@ void saveHandshake(const wifi_promiscuous_pkt_t *packet, bool beacon, FS &Fs, co
     auto &buf = eapol4WayBuffer[apKey];
     uint16_t dataLen = std::min<uint16_t>(packet->rx_ctrl.sig_len, EAPOL_BUF_SIZE);
     bool alreadySaved = hasCompleteHandshake(apKey);
-    HandshakeStateGuard hsGuard; // keep prune from erasing under us
+    HandshakeStateGuard hsGuard;   // keep prune from erasing under us
     if (!hsGuard.held) { return; } // prune busy: drop the frame, EAPOLs retransmit
 
     // M1: buffer; a PMKID in the key data is crackable on its own. A late M1
@@ -666,9 +664,7 @@ bool sniffer_is_handshake_ready(uint64_t key) {
     return ready;
 }
 
-bool handshakeCrackable(const HandshakeTracker &hs) {
-    return (hs.msg1 && hs.msg2) || (hs.msg2 && hs.msg3);
-}
+bool handshakeCrackable(const HandshakeTracker &hs) { return (hs.msg1 && hs.msg2) || (hs.msg2 && hs.msg3); }
 
 static void markHandshakeCrackable(uint64_t key) {
     portENTER_CRITICAL(&handshakeReadyMux);
@@ -850,8 +846,7 @@ static FrameInfo analyzeFrame(wifi_promiscuous_pkt_t *pkt) {
             if (printable) {
                 for (const auto &kv : beaconSsidCache) {
                     if (kv.second == probed) {
-                        const uint8_t curCh =
-                            (ch < sizeof(all_wifi_channels)) ? all_wifi_channels[ch] : 0;
+                        const uint8_t curCh = (ch < sizeof(all_wifi_channels)) ? all_wifi_channels[ch] : 0;
                         observeClient(kv.first, frame + 10, nullptr, curCh);
                         break;
                     }
@@ -1007,12 +1002,6 @@ uint16_t sniffer_count_clients(const uint8_t bssid[6]) {
     auto it = apClients.find(apKey);
     if (it == apClients.end()) return 0;
     return (uint16_t)it->second.size();
-}
-
-uint32_t sniffer_total_clients() {
-    uint32_t total = 0;
-    for (const auto &kv : apClients) total += (uint32_t)kv.second.size();
-    return total;
 }
 
 uint8_t sniffer_get_client_details(uint64_t apKey, ClientDetail *out, uint8_t maxOut) {
