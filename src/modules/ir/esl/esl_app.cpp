@@ -33,10 +33,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* IR → Tag Tinker → Targeted → tag → WiFi Plugins → wifiConnectMenu.
- * Default loopTask is 8 KB; WiFi.mode() then Cache/MMU-faults. This is
- * the Arduino hook (not a Bruce-core edit). HTTPS still runs off-loop. */
-SET_LOOP_TASK_STACK_SIZE(16 * 1024);
+// Loop task stack is already 16 KB from src/main.cpp; defining
+// SET_LOOP_TASK_STACK_SIZE here too duplicates getArduinoLoopTaskStackSize().
 
 #define ESL_BARCODE_LEN 17
 #define ESL_PRE_TX_SETTLE_MS 500
@@ -1381,8 +1379,8 @@ static RFIDInterface *esl_new_rfid(void) {
 }
 
 static void esl_free_rfid(RFIDInterface *rfid) {
+    // The reader holds its I2C lease and releases the bus on destruction.
     delete rfid;
-    releaseI2CBus();
 }
 
 #define ESL_NFC_PAGE_CAP 16u
