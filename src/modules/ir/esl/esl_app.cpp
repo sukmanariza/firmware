@@ -1,5 +1,11 @@
 #include "esl_app.h"
 
+#include "core/bus_HAL.h"
+#include "core/display.h"
+#include "core/mykeyboard.h"
+#include "core/scrollableTextArea.h"
+#include "core/sd_functions.h"
+#include "core/wifi/wifi_common.h"
 #include "esl_bmp.h"
 #include "esl_fs.h"
 #include "esl_ir_driver.h"
@@ -11,12 +17,6 @@
 #include "esl_wifi.h"
 #include "esl_wifi_client.h"
 #include "font/tagtinker_font.h"
-#include "core/bus_HAL.h"
-#include "core/display.h"
-#include "core/mykeyboard.h"
-#include "core/scrollableTextArea.h"
-#include "core/sd_functions.h"
-#include "core/wifi/wifi_common.h"
 #include "modules/ir/TV-B-Gone.h"
 #if !defined(LITE_VERSION)
 #include "modules/rfid/ST25R3916.h"
@@ -54,8 +54,7 @@ struct EslUiCtx {
     bool aborted;
 };
 
-static bool ui_send(void *ctx, const uint8_t *frame, size_t len,
-                    uint16_t repeats, uint8_t delay) {
+static bool ui_send(void *ctx, const uint8_t *frame, size_t len, uint16_t repeats, uint8_t delay) {
     (void)ctx;
     return esl_ir_transmit(frame, len, repeats, delay);
 }
@@ -89,13 +88,10 @@ static void ui_progress(void *ctx, size_t done, size_t total) {
     progressHandler((int)done, total, "Sending");
 }
 
-static const char *esl_target_label(const EslTarget *t) {
-    return t->name[0] ? t->name : t->barcode;
-}
+static const char *esl_target_label(const EslTarget *t) { return t->name[0] ? t->name : t->barcode; }
 
 /* + Type Barcode. Segment tags are valid here; graphics actions omit them. */
-static bool esl_parse_typed_barcode(const String &entered, uint8_t plid[4],
-                                    TagTinkerTagProfile *profile) {
+static bool esl_parse_typed_barcode(const String &entered, uint8_t plid[4], TagTinkerTagProfile *profile) {
     /* Bruce's keyboard returns ESC when the user backs out. Treat that as a
      * silent cancel rather than scolding them about a length they never
      * entered. (ESC is not whitespace, so it survives trim().) */
@@ -118,16 +114,15 @@ static bool esl_parse_typed_barcode(const String &entered, uint8_t plid[4],
 
 /* Mirrors scene_image_options, where the page is the only per-image knob.
  * Position, compression and frame-repeat stay at upstream's defaults. */
-static const char *ESL_PAGE_LABELS[8] = {"Page 0", "Page 1", "Page 2",
-                                         "Page 3", "Page 4", "Page 5",
-                                         "Page 6", "Page 7"};
+static const char *ESL_PAGE_LABELS[8] = {
+    "Page 0", "Page 1", "Page 2", "Page 3", "Page 4", "Page 5", "Page 6", "Page 7"
+};
 
 static bool esl_prompt_page(uint8_t *page) {
     int chosen = -1;
     options.clear();
     for (uint8_t p = 0; p < 8; p++) {
-        options.push_back(
-            Option(ESL_PAGE_LABELS[p], [&chosen, p]() { chosen = (int)p; }));
+        options.push_back(Option(ESL_PAGE_LABELS[p], [&chosen, p]() { chosen = (int)p; }));
     }
     /* Start on the caller's default (resolved page 2 for Color 2.6, else 0)
      * but keep the full 0–7 range so an explicit pick wins verbatim. */
@@ -140,8 +135,7 @@ static bool esl_prompt_page(uint8_t *page) {
 static void esl_noop(void);
 
 /* Reads the whole file into PSRAM. Caller frees. */
-static uint8_t *esl_read_file(fs::FS &fs, const String &path, size_t max_bytes,
-                              size_t *out_len) {
+static uint8_t *esl_read_file(fs::FS &fs, const String &path, size_t max_bytes, size_t *out_len) {
     File f = fs.open(path, FILE_READ);
     if (!f) return nullptr;
 
@@ -173,20 +167,14 @@ static bool esl_filename_gave_page(const char *name) {
     int consumed = 0;
     unsigned w = 0, h = 0;
     if (sscanf(name, "%ux%u%n", &w, &h, &consumed) < 2) return false;
-    if ((size_t)consumed >= name_len || name[consumed] != '_' ||
-        name[consumed + 1] != 'p') {
-        return false;
-    }
+    if ((size_t)consumed >= name_len || name[consumed] != '_' || name[consumed + 1] != 'p') { return false; }
     unsigned p = 0;
     return sscanf(name + consumed + 2, "%u", &p) == 1 && p <= 7U;
 }
 
-static uint8_t esl_seed_image_page(const EslTarget *target, const char *name,
-                                   uint8_t parsed_page) {
+static uint8_t esl_seed_image_page(const EslTarget *target, const char *name, uint8_t parsed_page) {
     if (esl_filename_gave_page(name)) return parsed_page;
-    if (tagtinker_profile_needs_wh_swap(&target->profile)) {
-        return tagtinker_color26_resolve_page(0);
-    }
+    if (tagtinker_profile_needs_wh_swap(&target->profile)) { return tagtinker_color26_resolve_page(0); }
     return 0;
 }
 
@@ -211,16 +199,14 @@ static FS *esl_active_fs(void) {
     return fs;
 }
 
-static bool esl_already_listed(const std::vector<EslBmpChoice> &out,
-                               const String &path) {
+static bool esl_already_listed(const std::vector<EslBmpChoice> &out, const String &path) {
     for (size_t i = 0; i < out.size(); i++) {
         if (out[i].path == path) return true;
     }
     return false;
 }
 
-static void esl_add_bmp_choice(const String &path, uint16_t tw, uint16_t th,
-                               std::vector<EslBmpChoice> &out) {
+static void esl_add_bmp_choice(const String &path, uint16_t tw, uint16_t th, std::vector<EslBmpChoice> &out) {
     if (out.size() >= TAGTINKER_MAX_SYNCED_IMAGES) return;
 
     String base = esl_basename(path);
@@ -229,10 +215,7 @@ static void esl_add_bmp_choice(const String &path, uint16_t tw, uint16_t th,
     char job[ESL_STORE_JOB_ID_LEN + 1];
     uint8_t page = 1;
     bool resampled = true;
-    if (!esl_parse_dropped_filename(base.c_str(), tw, th, job, sizeof(job),
-                                    &page, &resampled)) {
-        return;
-    }
+    if (!esl_parse_dropped_filename(base.c_str(), tw, th, job, sizeof(job), &page, &resampled)) { return; }
     if (esl_already_listed(out, path)) return;
 
     EslBmpChoice e;
@@ -248,8 +231,8 @@ static void esl_add_bmp_choice(const String &path, uint16_t tw, uint16_t th,
 /* Non-recursive: files in `dir` only. Depth-8 / whole-volume walks froze Set
  * Image on a typical Bruce card; dropped/ then SD-root still finds the spec
  * example `296x152_cat.bmp`. */
-static void esl_collect_bmp_dir(FS &fs, const String &dir, uint16_t tw,
-                                uint16_t th, std::vector<EslBmpChoice> &out) {
+static void
+esl_collect_bmp_dir(FS &fs, const String &dir, uint16_t tw, uint16_t th, std::vector<EslBmpChoice> &out) {
     if (out.size() >= TAGTINKER_MAX_SYNCED_IMAGES) return;
 
     File root = fs.open(dir);
@@ -262,9 +245,7 @@ static void esl_collect_bmp_dir(FS &fs, const String &dir, uint16_t tw,
         bool isDir = false;
         String full = root.getNextFileName(&isDir);
         if (full.length() == 0) break;
-        if (!full.startsWith("/")) {
-            full = (dir == "/") ? ("/" + full) : (dir + "/" + full);
-        }
+        if (!full.startsWith("/")) { full = (dir == "/") ? ("/" + full) : (dir + "/" + full); }
         String base = esl_basename(full);
         if (full == dir || base == "." || base == "..") continue;
         if (isDir) continue;
@@ -273,8 +254,7 @@ static void esl_collect_bmp_dir(FS &fs, const String &dir, uint16_t tw,
     root.close();
 }
 
-static void esl_collect_images(FS &fs, const EslTarget *target,
-                               std::vector<EslBmpChoice> &out) {
+static void esl_collect_images(FS &fs, const EslTarget *target, std::vector<EslBmpChoice> &out) {
     const uint16_t tw = target->profile.width;
     const uint16_t th = target->profile.height;
     esl_collect_bmp_dir(fs, ESL_DROPPED_DIR, tw, th, out);
@@ -282,8 +262,8 @@ static void esl_collect_images(FS &fs, const EslTarget *target,
 }
 
 /* Encode the chosen file, then claim IR. Page is sent verbatim. */
-static void esl_send_bmp(EslSession *sess, const EslTarget *target, FS &fs,
-                         const String &path, uint8_t page) {
+static void
+esl_send_bmp(EslSession *sess, const EslTarget *target, FS &fs, const String &path, uint8_t page) {
     const bool is_color26 = tagtinker_profile_needs_wh_swap(&target->profile);
     const size_t cap = is_color26 ? ESL_COLOR26_BMP_MAX : ESL_GENERIC_BMP_MAX;
 
@@ -319,22 +299,21 @@ static void esl_send_bmp(EslSession *sess, const EslTarget *target, FS &fs,
             return;
         }
         EslColor26BmpCtx ctx = {file, file_len, &info};
-        const size_t total = (size_t)TAGTINKER_COLOR26_WIRE_W *
-                             TAGTINKER_COLOR26_WIRE_H * 2U;
-        encoded = tagtinker_encode_fn_payload(esl_color26_bmp_pixel, &ctx, total,
-                                              TagTinkerCompressionAuto, &payload);
+        const size_t total = (size_t)TAGTINKER_COLOR26_WIRE_W * TAGTINKER_COLOR26_WIRE_H * 2U;
+        encoded = tagtinker_encode_fn_payload(
+            esl_color26_bmp_pixel, &ctx, total, TagTinkerCompressionAuto, &payload
+        );
     } else {
         /* Accent plane follows the profile's colour capability, matching
          * upstream's use_second_plane with color_clear at its default. */
         out_w = target->profile.width;
         out_h = target->profile.height;
         const bool second_plane = (target->profile.color != TagTinkerTagColorMono);
-        EslGenericBmpCtx ctx = {file, file_len, &info, out_w, out_h,
-                                second_plane};
-        const size_t total =
-            (size_t)out_w * out_h * (second_plane ? 2U : 1U);
-        encoded = tagtinker_encode_fn_payload(esl_generic_bmp_pixel, &ctx, total,
-                                              TagTinkerCompressionAuto, &payload);
+        EslGenericBmpCtx ctx = {file, file_len, &info, out_w, out_h, second_plane};
+        const size_t total = (size_t)out_w * out_h * (second_plane ? 2U : 1U);
+        encoded = tagtinker_encode_fn_payload(
+            esl_generic_bmp_pixel, &ctx, total, TagTinkerCompressionAuto, &payload
+        );
     }
 
     free(file); /* pixels are now baked into the payload */
@@ -363,10 +342,11 @@ static void esl_send_bmp(EslSession *sess, const EslTarget *target, FS &fs,
     esl_ir_set_abort_hook(ui_abort_poll, &ui);
 
     const bool ok =
-        is_color26 ? esl_tx_send_color26(&ops, target->plid, &payload, page)
-                   : esl_tx_send_generic(&ops, target->plid, &payload, page,
-                                         out_w, out_h, 0u, 0u,
-                                         sess->settings.data_frame_repeats);
+        is_color26
+            ? esl_tx_send_color26(&ops, target->plid, &payload, page)
+            : esl_tx_send_generic(
+                  &ops, target->plid, &payload, page, out_w, out_h, 0u, 0u, sess->settings.data_frame_repeats
+              );
 
     esl_ir_set_abort_hook(nullptr, nullptr);
     esl_ir_deinit();
@@ -412,8 +392,8 @@ static void esl_led_test(const EslTarget *target) {
     }
 }
 
-static void esl_image_options(EslSession *sess, const EslTarget *target, FS &fs,
-                              const String &path, uint8_t page) {
+static void
+esl_image_options(EslSession *sess, const EslTarget *target, FS &fs, const String &path, uint8_t page) {
     while (true) {
         bool send = false;
         char page_lbl[16];
@@ -426,8 +406,7 @@ static void esl_image_options(EslSession *sess, const EslTarget *target, FS &fs,
                            }});
         options.push_back({ESL_SEND_BMP, [&]() { send = true; }});
 
-        int sel = loopOptions(options, MENU_TYPE_SUBMENU,
-                              ESL_TARGET_ACTIONS_GRAPHICS[1]);
+        int sel = loopOptions(options, MENU_TYPE_SUBMENU, ESL_TARGET_ACTIONS_GRAPHICS[1]);
         if (sel < 0) return;
         if (send) {
             esl_send_bmp(sess, target, fs, path, page);
@@ -447,23 +426,20 @@ static void esl_set_image(EslSession *sess, const EslTarget *target) {
         int picked = -1;
         options.clear();
         if (images.empty()) {
-            const size_t n =
-                sizeof(ESL_SET_IMAGE_EMPTY) / sizeof(ESL_SET_IMAGE_EMPTY[0]);
-            for (size_t i = 0; i < n; i++) {
-                options.push_back({ESL_SET_IMAGE_EMPTY[i], esl_noop});
-            }
+            const size_t n = sizeof(ESL_SET_IMAGE_EMPTY) / sizeof(ESL_SET_IMAGE_EMPTY[0]);
+            for (size_t i = 0; i < n; i++) { options.push_back({ESL_SET_IMAGE_EMPTY[i], esl_noop}); }
         } else {
             for (int i = (int)images.size() - 1; i >= 0; i--) {
                 const EslBmpChoice &e = images[(size_t)i];
                 char label[64];
-                snprintf(label, sizeof(label), "%sP%u %s",
-                         e.resampled ? "~ " : "", (unsigned)e.page, e.job_id);
+                snprintf(
+                    label, sizeof(label), "%sP%u %s", e.resampled ? "~ " : "", (unsigned)e.page, e.job_id
+                );
                 options.push_back({label, [&picked, i]() { picked = i; }});
             }
         }
 
-        int sel = loopOptions(options, MENU_TYPE_SUBMENU,
-                              ESL_TARGET_ACTIONS_GRAPHICS[1]);
+        int sel = loopOptions(options, MENU_TYPE_SUBMENU, ESL_TARGET_ACTIONS_GRAPHICS[1]);
         if (sel < 0) return;
         if (picked >= 0 && fs != nullptr) {
             const EslBmpChoice &e = images[(size_t)picked];
@@ -488,10 +464,10 @@ static uint8_t esl_text_tx_page(uint8_t img_page) {
     return page;
 }
 
-static void esl_text_render_full(uint8_t *primary, uint8_t *secondary, uint16_t w,
-                                 uint16_t h, const char *text,
-                                 const EslSession *sess,
-                                 TagTinkerTagColor color) {
+static void esl_text_render_full(
+    uint8_t *primary, uint8_t *secondary, uint16_t w, uint16_t h, const char *text, const EslSession *sess,
+    TagTinkerTagColor color
+) {
     const bool accent_capable = (color != TagTinkerTagColorMono);
     const bool accent_text = accent_capable && sess->color_clear;
     const size_t pixel_count = (size_t)w * h;
@@ -499,42 +475,50 @@ static void esl_text_render_full(uint8_t *primary, uint8_t *secondary, uint16_t 
     if (accent_text) {
         uint8_t bg_primary = sess->invert_text ? 0 : 1;
         uint8_t fg_primary = (color == TagTinkerTagColorYellow) ? 0 : 1;
-        render_text_ex(primary, w, h, text, bg_primary, fg_primary,
-                       sess->text_padding_pct);
+        render_text_ex(primary, w, h, text, bg_primary, fg_primary, sess->text_padding_pct);
         render_text_ex(secondary, w, h, text, 1, 0, sess->text_padding_pct);
     } else {
-        render_text_ex(primary, w, h, text, sess->invert_text ? 0 : 1,
-                       sess->invert_text ? 1 : 0, sess->text_padding_pct);
+        render_text_ex(
+            primary, w, h, text, sess->invert_text ? 0 : 1, sess->invert_text ? 1 : 0, sess->text_padding_pct
+        );
         if (secondary) memset(secondary, 1, pixel_count);
     }
 }
 
-static void esl_text_render_region(uint8_t *primary, uint8_t *secondary,
-                                   uint16_t w, uint16_t h, uint16_t y,
-                                   uint16_t actual_h, const char *text,
-                                   const EslSession *sess,
-                                   TagTinkerTagColor color) {
+static void esl_text_render_region(
+    uint8_t *primary, uint8_t *secondary, uint16_t w, uint16_t h, uint16_t y, uint16_t actual_h,
+    const char *text, const EslSession *sess, TagTinkerTagColor color
+) {
     const bool accent_capable = (color != TagTinkerTagColorMono);
     const bool accent_text = accent_capable && sess->color_clear;
 
     if (accent_text) {
         uint8_t bg_primary = sess->invert_text ? 0 : 1;
         uint8_t fg_primary = (color == TagTinkerTagColorYellow) ? 0 : 1;
-        render_text_region_ex(primary, w, h, y, actual_h, text, bg_primary,
-                              fg_primary, sess->text_padding_pct);
-        render_text_region_ex(secondary, w, h, y, actual_h, text, 1, 0,
-                              sess->text_padding_pct);
+        render_text_region_ex(
+            primary, w, h, y, actual_h, text, bg_primary, fg_primary, sess->text_padding_pct
+        );
+        render_text_region_ex(secondary, w, h, y, actual_h, text, 1, 0, sess->text_padding_pct);
     } else {
-        render_text_region_ex(primary, w, h, y, actual_h, text,
-                              sess->invert_text ? 0 : 1,
-                              sess->invert_text ? 1 : 0, sess->text_padding_pct);
+        render_text_region_ex(
+            primary,
+            w,
+            h,
+            y,
+            actual_h,
+            text,
+            sess->invert_text ? 0 : 1,
+            sess->invert_text ? 1 : 0,
+            sess->text_padding_pct
+        );
         if (secondary) memset(secondary, 1, (size_t)w * actual_h);
     }
 }
 
-static bool esl_text_run_ir(EslSession *sess, const EslTarget *target,
-                            const TagTinkerImagePayload *payload, bool color26,
-                            uint16_t w, uint16_t h, uint16_t pos_y) {
+static bool esl_text_run_ir(
+    EslSession *sess, const EslTarget *target, const TagTinkerImagePayload *payload, bool color26, uint16_t w,
+    uint16_t h, uint16_t pos_y
+) {
     checkIrTxPin();
     if (!esl_ir_init(bruceConfigPins.irTx)) {
         displayError("IR init failed", true);
@@ -552,8 +536,9 @@ static bool esl_text_run_ir(EslSession *sess, const EslTarget *target,
     const uint8_t page = esl_text_tx_page(sess->img_page);
     const bool ok =
         color26 ? esl_tx_send_color26(&ops, target->plid, payload, page)
-                : esl_tx_send_generic(&ops, target->plid, payload, page, w, h,
-                                      0u, pos_y, sess->settings.data_frame_repeats);
+                : esl_tx_send_generic(
+                      &ops, target->plid, payload, page, w, h, 0u, pos_y, sess->settings.data_frame_repeats
+                  );
 
     esl_ir_set_abort_hook(nullptr, nullptr);
     esl_ir_deinit();
@@ -568,18 +553,15 @@ static bool esl_text_run_ir(EslSession *sess, const EslTarget *target,
     return ok;
 }
 
-static void esl_send_text_color26(EslSession *sess, const EslTarget *target,
-                                  const char *text) {
+static void esl_send_text_color26(EslSession *sess, const EslTarget *target, const char *text) {
     const uint16_t gw = TAGTINKER_COLOR26_GLASS_W;
     const uint16_t gh = TAGTINKER_COLOR26_GLASS_H;
     const size_t pixel_count = (size_t)gw * gh;
-    const bool accent_capable =
-        (target->profile.color != TagTinkerTagColorMono);
+    const bool accent_capable = (target->profile.color != TagTinkerTagColorMono);
     const bool accent_text = accent_capable && sess->color_clear;
 
     uint8_t *primary = (uint8_t *)ps_malloc(pixel_count);
-    uint8_t *secondary =
-        accent_text ? (uint8_t *)ps_malloc(pixel_count) : nullptr;
+    uint8_t *secondary = accent_text ? (uint8_t *)ps_malloc(pixel_count) : nullptr;
     if (primary == nullptr || (accent_text && secondary == nullptr)) {
         free(primary);
         free(secondary);
@@ -589,15 +571,13 @@ static void esl_send_text_color26(EslSession *sess, const EslTarget *target,
 
     drawMainBorderWithTitle(ESL_UI_APP_NAME);
     displayTextLine("Encoding...");
-    esl_text_render_full(primary, secondary, gw, gh, text, sess,
-                         target->profile.color);
+    esl_text_render_full(primary, secondary, gw, gh, text, sess, target->profile.color);
 
     EslTextColor26Ctx ctx = {primary, secondary};
-    const size_t total = (size_t)TAGTINKER_COLOR26_WIRE_W *
-                         TAGTINKER_COLOR26_WIRE_H * 2U;
+    const size_t total = (size_t)TAGTINKER_COLOR26_WIRE_W * TAGTINKER_COLOR26_WIRE_H * 2U;
     TagTinkerImagePayload payload;
-    const bool encoded = tagtinker_encode_fn_payload(
-        esl_text_color26_pixel, &ctx, total, TagTinkerCompressionAuto, &payload);
+    const bool encoded =
+        tagtinker_encode_fn_payload(esl_text_color26_pixel, &ctx, total, TagTinkerCompressionAuto, &payload);
     free(primary);
     free(secondary);
     if (!encoded) {
@@ -609,13 +589,12 @@ static void esl_send_text_color26(EslSession *sess, const EslTarget *target,
     tagtinker_free_image_payload(&payload);
 }
 
-static bool esl_send_text_generic_full(EslSession *sess, const EslTarget *target,
-                                       const char *text, uint16_t w, uint16_t h,
-                                       bool use_second_plane) {
+static bool esl_send_text_generic_full(
+    EslSession *sess, const EslTarget *target, const char *text, uint16_t w, uint16_t h, bool use_second_plane
+) {
     const size_t pixel_count = (size_t)w * h;
     uint8_t *primary = (uint8_t *)ps_malloc(pixel_count);
-    uint8_t *secondary =
-        use_second_plane ? (uint8_t *)ps_malloc(pixel_count) : nullptr;
+    uint8_t *secondary = use_second_plane ? (uint8_t *)ps_malloc(pixel_count) : nullptr;
     if (primary == nullptr || (use_second_plane && secondary == nullptr)) {
         free(primary);
         free(secondary);
@@ -624,12 +603,11 @@ static bool esl_send_text_generic_full(EslSession *sess, const EslTarget *target
 
     drawMainBorderWithTitle(ESL_UI_APP_NAME);
     displayTextLine("Encoding...");
-    esl_text_render_full(primary, secondary, w, h, text, sess,
-                         target->profile.color);
+    esl_text_render_full(primary, secondary, w, h, text, sess, target->profile.color);
 
     TagTinkerImagePayload payload;
-    const bool encoded = tagtinker_encode_planes_payload(
-        primary, secondary, pixel_count, TagTinkerCompressionAuto, &payload);
+    const bool encoded =
+        tagtinker_encode_planes_payload(primary, secondary, pixel_count, TagTinkerCompressionAuto, &payload);
     free(primary);
     free(secondary);
     if (!encoded) return false;
@@ -639,14 +617,12 @@ static bool esl_send_text_generic_full(EslSession *sess, const EslTarget *target
     return true;
 }
 
-static void esl_send_text_generic_chunks(EslSession *sess,
-                                         const EslTarget *target,
-                                         const char *text, uint16_t w,
-                                         uint16_t h, bool use_second_plane) {
+static void esl_send_text_generic_chunks(
+    EslSession *sess, const EslTarget *target, const char *text, uint16_t w, uint16_t h, bool use_second_plane
+) {
     const uint16_t chunk_h = esl_text_chunk_height(w, h, use_second_plane);
     uint8_t *primary = (uint8_t *)malloc((size_t)w * chunk_h);
-    uint8_t *secondary =
-        use_second_plane ? (uint8_t *)malloc((size_t)w * chunk_h) : nullptr;
+    uint8_t *secondary = use_second_plane ? (uint8_t *)malloc((size_t)w * chunk_h) : nullptr;
     if (primary == nullptr || (use_second_plane && secondary == nullptr)) {
         free(primary);
         free(secondary);
@@ -676,17 +652,16 @@ static void esl_send_text_generic_chunks(EslSession *sess,
         uint16_t actual_h = (uint16_t)(h - y);
         if (actual_h > chunk_h) actual_h = chunk_h;
 
-        esl_text_render_region(primary, secondary, w, h, y, actual_h, text, sess,
-                               target->profile.color);
+        esl_text_render_region(primary, secondary, w, h, y, actual_h, text, sess, target->profile.color);
 
         TagTinkerImagePayload payload;
-        ok = tagtinker_encode_planes_payload(primary, secondary,
-                                             (size_t)w * actual_h,
-                                             TagTinkerCompressionAuto, &payload);
+        ok = tagtinker_encode_planes_payload(
+            primary, secondary, (size_t)w * actual_h, TagTinkerCompressionAuto, &payload
+        );
         if (ok) {
-            ok = esl_tx_send_generic(&ops, target->plid, &payload, page, w,
-                                     actual_h, 0u, y,
-                                     sess->settings.data_frame_repeats);
+            ok = esl_tx_send_generic(
+                &ops, target->plid, &payload, page, w, actual_h, 0u, y, sess->settings.data_frame_repeats
+            );
             tagtinker_free_image_payload(&payload);
         }
         if (ok && (uint16_t)(y + actual_h) < h) {
@@ -708,12 +683,8 @@ static void esl_send_text_generic_chunks(EslSession *sess,
     }
 }
 
-static void esl_send_text(EslSession *sess, const EslTarget *target,
-                          const char *text) {
-    if (sess == nullptr || target == nullptr || text == nullptr ||
-        text[0] == '\0') {
-        return;
-    }
+static void esl_send_text(EslSession *sess, const EslTarget *target, const char *text) {
+    if (sess == nullptr || target == nullptr || text == nullptr || text[0] == '\0') { return; }
 
     if (tagtinker_profile_needs_wh_swap(&target->profile)) {
         esl_send_text_color26(sess, target, text);
@@ -722,13 +693,11 @@ static void esl_send_text(EslSession *sess, const EslTarget *target,
 
     const uint16_t w = target->profile.width;
     const uint16_t h = target->profile.height;
-    const bool accent_capable =
-        (target->profile.color != TagTinkerTagColorMono);
+    const bool accent_capable = (target->profile.color != TagTinkerTagColorMono);
     const bool use_second_plane = accent_capable || sess->color_clear;
 
     if (esl_text_should_send_full(w, h, use_second_plane)) {
-        if (!esl_send_text_generic_full(sess, target, text, w, h,
-                                        use_second_plane)) {
+        if (!esl_send_text_generic_full(sess, target, text, w, h, use_second_plane)) {
             displayError("Encode failed", true);
         }
         return;
@@ -742,51 +711,47 @@ static void esl_pick_text_page(uint8_t *img_page) {
     for (uint8_t p = 1; p <= 8; p++) {
         options.push_back({String((unsigned)p), [img_page, p]() { *img_page = p; }});
     }
-    loopOptions(options, MENU_TYPE_SUBMENU, "Page",
-                (int)esl_text_page_to_index(*img_page));
+    loopOptions(options, MENU_TYPE_SUBMENU, "Page", (int)esl_text_page_to_index(*img_page));
 }
 
 static void esl_pick_text_polarity(EslSession *sess) {
     options = {
         {"B on W", [sess]() { sess->invert_text = false; }},
-        {"W on B", [sess]() { sess->invert_text = true; }},
+        {"W on B", [sess]() { sess->invert_text = true; } },
     };
-    loopOptions(options, MENU_TYPE_SUBMENU, "Polarity",
-                sess->invert_text ? 1 : 0);
+    loopOptions(options, MENU_TYPE_SUBMENU, "Polarity", sess->invert_text ? 1 : 0);
 }
 
 static void esl_pick_text_padding(EslSession *sess) {
     options.clear();
     for (uint8_t i = 0; i < 9; i++) {
         uint8_t pct = (uint8_t)(i * 5);
-        options.push_back({String((unsigned)pct) + "%",
-                           [sess, pct]() { sess->text_padding_pct = pct; }});
+        options.push_back({String((unsigned)pct) + "%", [sess, pct]() { sess->text_padding_pct = pct; }});
     }
     uint8_t idx = sess->text_padding_pct / 5;
     if (idx > 8) idx = 8;
     loopOptions(options, MENU_TYPE_SUBMENU, "Padding", (int)idx);
 }
 
-static void esl_text_size_picker(EslSession *sess, const EslTarget *target,
-                                 const char *text) {
+static void esl_text_size_picker(EslSession *sess, const EslTarget *target, const char *text) {
     if (sess->img_page == 0U) sess->img_page = 1U;
     if (sess->img_page > 8U) sess->img_page = 8U;
 
     while (true) {
         bool tx = false;
         options.clear();
-        options.push_back({String("Page  ") + String((unsigned)sess->img_page),
-                           [sess]() { esl_pick_text_page(&sess->img_page); }});
-        options.push_back({String("Polarity  ") +
-                               (sess->invert_text ? "W on B" : "B on W"),
-                           [sess]() { esl_pick_text_polarity(sess); }});
-        options.push_back({String("Padding  ") +
-                               String((unsigned)sess->text_padding_pct) + "%",
-                           [sess]() { esl_pick_text_padding(sess); }});
+        options.push_back({String("Page  ") + String((unsigned)sess->img_page), [sess]() {
+                               esl_pick_text_page(&sess->img_page);
+                           }});
+        options.push_back({String("Polarity  ") + (sess->invert_text ? "W on B" : "B on W"), [sess]() {
+                               esl_pick_text_polarity(sess);
+                           }});
+        options.push_back({String("Padding  ") + String((unsigned)sess->text_padding_pct) + "%", [sess]() {
+                               esl_pick_text_padding(sess);
+                           }});
         options.push_back({ESL_TRANSMIT, [&]() { tx = true; }});
 
-        int sel = loopOptions(options, MENU_TYPE_SUBMENU,
-                              ESL_TARGET_ACTIONS_GRAPHICS[0]);
+        int sel = loopOptions(options, MENU_TYPE_SUBMENU, ESL_TARGET_ACTIONS_GRAPHICS[0]);
         if (sel < 0) return;
         if (!tx) continue;
 
@@ -832,9 +797,7 @@ static void esl_set_text(EslSession *sess, const EslTarget *target) {
             continue;
         }
 
-        if (recent_idx < 0 || (uint8_t)recent_idx >= sess->recent_count) {
-            continue;
-        }
+        if (recent_idx < 0 || (uint8_t)recent_idx >= sess->recent_count) { continue; }
 
         const EslRecent *r = &sess->recents[recent_idx];
         sess->esl_width = r->width;
@@ -866,8 +829,7 @@ typedef struct {
 } EslBroadcastKnobs;
 
 static const uint16_t ESL_BCAST_DURATIONS[] = {2, 5, 10, 15, 30, 60, 120};
-static const char *const ESL_BCAST_DURATION_LBLS[] = {
-    "2s", "5s", "10s", "15s", "30s", "60s", "120s"};
+static const char *const ESL_BCAST_DURATION_LBLS[] = {"2s", "5s", "10s", "15s", "30s", "60s", "120s"};
 #define ESL_BCAST_DURATION_N ((int)(sizeof(ESL_BCAST_DURATIONS) / sizeof(ESL_BCAST_DURATIONS[0])))
 static const uint16_t ESL_BCAST_REPEATS[] = {50, 100, 200, 400, 800};
 #define ESL_BCAST_REPEATS_N ((int)(sizeof(ESL_BCAST_REPEATS) / sizeof(ESL_BCAST_REPEATS[0])))
@@ -891,8 +853,7 @@ static void esl_pick_bcast_duration(uint16_t *duration) {
     options.clear();
     for (int i = 0; i < ESL_BCAST_DURATION_N; i++) {
         uint16_t d = ESL_BCAST_DURATIONS[i];
-        options.push_back(
-            {ESL_BCAST_DURATION_LBLS[i], [duration, d]() { *duration = d; }});
+        options.push_back({ESL_BCAST_DURATION_LBLS[i], [duration, d]() { *duration = d; }});
     }
     int cur = esl_u16_index(ESL_BCAST_DURATIONS, ESL_BCAST_DURATION_N, *duration, 3);
     loopOptions(options, MENU_TYPE_SUBMENU, "Duration", cur);
@@ -911,14 +872,13 @@ static void esl_pick_bcast_repeats(uint16_t *repeats) {
 static void esl_pick_on_off(bool *val, const char *title) {
     options = {
         {"Off", [val]() { *val = false; }},
-        {"On", [val]() { *val = true; }},
+        {"On",  [val]() { *val = true; } },
     };
     loopOptions(options, MENU_TYPE_SUBMENU, title, *val ? 1 : 0);
 }
 
 /* Same IR chrome as LED Test: pin check, init, Tag Tinker title, Esc abort. */
-static void esl_broadcast_transmit(const uint8_t *frame, size_t len,
-                                   uint16_t repeats, bool spam) {
+static void esl_broadcast_transmit(const uint8_t *frame, size_t len, uint16_t repeats, bool spam) {
     checkIrTxPin();
     if (!esl_ir_init(bruceConfigPins.irTx)) {
         displayError("IR init failed", true);
@@ -952,31 +912,33 @@ static void esl_broadcast_knob_screen(EslBroadcastKnobs *k, bool change_page) {
         bool tx = false;
         options.clear();
         if (change_page) {
-            options.push_back({String("Page  ") + String((unsigned)k->page),
-                               [k]() { esl_pick_bcast_page(&k->page); }});
-            options.push_back({String("Duration  ") + String((unsigned)k->duration) + "s",
-                               [k]() { esl_pick_bcast_duration(&k->duration); }});
-            options.push_back({String("Forever  ") + (k->forever ? "On" : "Off"),
-                               [k]() { esl_pick_on_off(&k->forever, "Forever"); }});
+            options.push_back({String("Page  ") + String((unsigned)k->page), [k]() {
+                                   esl_pick_bcast_page(&k->page);
+                               }});
+            options.push_back({String("Duration  ") + String((unsigned)k->duration) + "s", [k]() {
+                                   esl_pick_bcast_duration(&k->duration);
+                               }});
+            options.push_back({String("Forever  ") + (k->forever ? "On" : "Off"), [k]() {
+                                   esl_pick_on_off(&k->forever, "Forever");
+                               }});
         }
-        options.push_back({String("Repeats  ") + String((unsigned)k->repeats),
-                           [k]() { esl_pick_bcast_repeats(&k->repeats); }});
-        options.push_back({String("Repeat  ") + (k->spam ? "On" : "Off"),
-                           [k]() { esl_pick_on_off(&k->spam, "Repeat"); }});
+        options.push_back({String("Repeats  ") + String((unsigned)k->repeats), [k]() {
+                               esl_pick_bcast_repeats(&k->repeats);
+                           }});
+        options.push_back({String("Repeat  ") + (k->spam ? "On" : "Off"), [k]() {
+                               esl_pick_on_off(&k->spam, "Repeat");
+                           }});
         options.push_back({ESL_TRANSMIT, [&]() { tx = true; }});
 
-        const char *title =
-            change_page ? ESL_BROADCAST_ITEMS[0] : ESL_BROADCAST_ITEMS[1];
+        const char *title = change_page ? ESL_BROADCAST_ITEMS[0] : ESL_BROADCAST_ITEMS[1];
         int sel = loopOptions(options, MENU_TYPE_SUBMENU, title);
         if (sel < 0) return;
         if (!tx) continue;
 
         uint8_t frame[TAGTINKER_MAX_FRAME_SIZE];
-        size_t len =
-            change_page
-                ? tagtinker_build_broadcast_page_frame(frame, k->page, k->forever,
-                                                       k->duration)
-                : tagtinker_build_broadcast_debug_frame(frame);
+        size_t len = change_page
+                         ? tagtinker_build_broadcast_page_frame(frame, k->page, k->forever, k->duration)
+                         : tagtinker_build_broadcast_debug_frame(frame);
         esl_broadcast_transmit(frame, len, k->repeats, k->spam);
     }
 }
@@ -985,10 +947,8 @@ static void esl_broadcast_menu(void) {
     EslBroadcastKnobs knobs = {0, 15, false, 200, false};
     while (true) {
         options = {
-            {ESL_BROADCAST_ITEMS[0],
-             [&]() { esl_broadcast_knob_screen(&knobs, true); }},
-            {ESL_BROADCAST_ITEMS[1],
-             [&]() { esl_broadcast_knob_screen(&knobs, false); }},
+            {ESL_BROADCAST_ITEMS[0], [&]() { esl_broadcast_knob_screen(&knobs, true); } },
+            {ESL_BROADCAST_ITEMS[1], [&]() { esl_broadcast_knob_screen(&knobs, false); }},
         };
         int sel = loopOptions(options, MENU_TYPE_SUBMENU, ESL_MAIN_ITEMS[0]);
         if (sel < 0) return;
@@ -1006,9 +966,10 @@ static void esl_wifi_planes_as_bmp(const EslWifiRenderHeader *hdr, EslBmpInfo *i
     info->top_down = true;
 }
 
-static void esl_send_wifi_planes(EslSession *sess, const EslTarget *target,
-                                 const uint8_t *planes, size_t plane_len,
-                                 const EslWifiRenderHeader *hdr, uint8_t page) {
+static void esl_send_wifi_planes(
+    EslSession *sess, const EslTarget *target, const uint8_t *planes, size_t plane_len,
+    const EslWifiRenderHeader *hdr, uint8_t page
+) {
     EslBmpInfo info;
     esl_wifi_planes_as_bmp(hdr, &info);
 
@@ -1024,20 +985,19 @@ static void esl_send_wifi_planes(EslSession *sess, const EslTarget *target,
 
     if (is_color26) {
         EslColor26BmpCtx ctx = {planes, plane_len, &info};
-        const size_t total = (size_t)TAGTINKER_COLOR26_WIRE_W *
-                             TAGTINKER_COLOR26_WIRE_H * 2U;
-        encoded = tagtinker_encode_fn_payload(esl_color26_bmp_pixel, &ctx, total,
-                                              TagTinkerCompressionAuto, &payload);
+        const size_t total = (size_t)TAGTINKER_COLOR26_WIRE_W * TAGTINKER_COLOR26_WIRE_H * 2U;
+        encoded = tagtinker_encode_fn_payload(
+            esl_color26_bmp_pixel, &ctx, total, TagTinkerCompressionAuto, &payload
+        );
     } else {
         out_w = target->profile.width;
         out_h = target->profile.height;
         const bool second_plane = (target->profile.color != TagTinkerTagColorMono);
-        EslGenericBmpCtx ctx = {planes, plane_len, &info, out_w, out_h,
-                                second_plane};
-        const size_t total =
-            (size_t)out_w * out_h * (second_plane ? 2U : 1U);
-        encoded = tagtinker_encode_fn_payload(esl_generic_bmp_pixel, &ctx, total,
-                                              TagTinkerCompressionAuto, &payload);
+        EslGenericBmpCtx ctx = {planes, plane_len, &info, out_w, out_h, second_plane};
+        const size_t total = (size_t)out_w * out_h * (second_plane ? 2U : 1U);
+        encoded = tagtinker_encode_fn_payload(
+            esl_generic_bmp_pixel, &ctx, total, TagTinkerCompressionAuto, &payload
+        );
     }
 
     if (!encoded) {
@@ -1061,10 +1021,11 @@ static void esl_send_wifi_planes(EslSession *sess, const EslTarget *target,
     esl_ir_set_abort_hook(ui_abort_poll, &ui);
 
     const bool ok =
-        is_color26 ? esl_tx_send_color26(&ops, target->plid, &payload, page)
-                   : esl_tx_send_generic(&ops, target->plid, &payload, page,
-                                         out_w, out_h, 0u, 0u,
-                                         sess->settings.data_frame_repeats);
+        is_color26
+            ? esl_tx_send_color26(&ops, target->plid, &payload, page)
+            : esl_tx_send_generic(
+                  &ops, target->plid, &payload, page, out_w, out_h, 0u, 0u, sess->settings.data_frame_repeats
+              );
 
     esl_ir_set_abort_hook(nullptr, nullptr);
     esl_ir_deinit();
@@ -1079,8 +1040,7 @@ static void esl_send_wifi_planes(EslSession *sess, const EslTarget *target,
     }
 }
 
-static bool esl_wifi_prompt_params(const EslWifiPlugin *plugin,
-                                   char values[ESL_WIFI_MAX_PARAMS][64]) {
+static bool esl_wifi_prompt_params(const EslWifiPlugin *plugin, char values[ESL_WIFI_MAX_PARAMS][64]) {
     for (uint8_t i = 0; i < plugin->param_count; i++) {
         const EslWifiParam *sp = &plugin->params[i];
         strncpy(values[i], sp->default_value, 63);
@@ -1093,8 +1053,7 @@ static bool esl_wifi_prompt_params(const EslWifiPlugin *plugin,
             options.clear();
             for (uint8_t j = 0; j < sp->option_count; j++) {
                 if (strcmp(values[i], sp->options[j]) == 0) cur = (int)j;
-                options.push_back(
-                    {sp->options[j], [j, &chosen]() { chosen = (int)j; }});
+                options.push_back({sp->options[j], [j, &chosen]() { chosen = (int)j; }});
             }
             int sel = loopOptions(options, MENU_TYPE_SUBMENU, sp->label, cur);
             if (sel < 0) return false;
@@ -1106,7 +1065,7 @@ static bool esl_wifi_prompt_params(const EslWifiPlugin *plugin,
             bool on = (values[i][0] == '1');
             options = {
                 {"Off", [&]() { on = false; }},
-                {"On", [&]() { on = true; }},
+                {"On",  [&]() { on = true; } },
             };
             int sel = loopOptions(options, MENU_TYPE_SUBMENU, sp->label, on ? 1 : 0);
             if (sel < 0) return false;
@@ -1127,11 +1086,9 @@ static bool esl_wifi_prompt_params(const EslWifiPlugin *plugin,
                 int32_t chosen = cur;
                 options.clear();
                 for (int32_t v = minv; v <= maxv; v++) {
-                    options.push_back(
-                        {String((int)v), [v, &chosen]() { chosen = v; }});
+                    options.push_back({String((int)v), [v, &chosen]() { chosen = v; }});
                 }
-                int sel = loopOptions(options, MENU_TYPE_SUBMENU, sp->label,
-                                      (int)(cur - minv));
+                int sel = loopOptions(options, MENU_TYPE_SUBMENU, sp->label, (int)(cur - minv));
                 if (sel < 0) return false;
                 snprintf(values[i], 64, "%ld", (long)chosen);
             } else {
@@ -1158,8 +1115,7 @@ static uint8_t esl_wifi_accent_for(const EslTarget *target) {
     return 0;
 }
 
-static void esl_wifi_run_plugin(EslSession *sess, const EslTarget *target,
-                                const EslWifiPlugin *plugin) {
+static void esl_wifi_run_plugin(EslSession *sess, const EslTarget *target, const EslWifiPlugin *plugin) {
     char values[ESL_WIFI_MAX_PARAMS][64];
     memset(values, 0, sizeof values);
     if (!esl_wifi_prompt_params(plugin, values)) return;
@@ -1184,15 +1140,22 @@ static void esl_wifi_run_plugin(EslSession *sess, const EslTarget *target,
     EslWifiRenderHeader hdr;
     uint8_t *body = nullptr;
     size_t body_len = 0;
-    if (!esl_wifi_client_fetch_render(plugin->id, tw, th, esl_wifi_accent_for(target),
-                                      keys, vals, plugin->param_count, &hdr, &body,
-                                      &body_len)) {
+    if (!esl_wifi_client_fetch_render(
+            plugin->id,
+            tw,
+            th,
+            esl_wifi_accent_for(target),
+            keys,
+            vals,
+            plugin->param_count,
+            &hdr,
+            &body,
+            &body_len
+        )) {
         return;
     }
 
-    uint8_t page = tagtinker_profile_needs_wh_swap(&target->profile)
-                       ? tagtinker_color26_resolve_page(0)
-                       : 0;
+    uint8_t page = tagtinker_profile_needs_wh_swap(&target->profile) ? tagtinker_color26_resolve_page(0) : 0;
     while (true) {
         bool tx = false;
         char page_lbl[16];
@@ -1203,8 +1166,7 @@ static void esl_wifi_run_plugin(EslSession *sess, const EslTarget *target,
                                if (esl_prompt_page(&p)) page = p;
                            }});
         options.push_back({ESL_TRANSMIT, [&]() { tx = true; }});
-        int sel = loopOptions(options, MENU_TYPE_SUBMENU,
-                              plugin->name[0] ? plugin->name : "WiFi Plugins");
+        int sel = loopOptions(options, MENU_TYPE_SUBMENU, plugin->name[0] ? plugin->name : "WiFi Plugins");
         if (sel < 0) {
             free(body);
             return;
@@ -1218,8 +1180,7 @@ static void esl_wifi_run_plugin(EslSession *sess, const EslTarget *target,
 }
 
 static void esl_wifi_plugins(EslSession *sess, const EslTarget *target) {
-    EslWifiManifest *manifest =
-        (EslWifiManifest *)ps_malloc(sizeof(EslWifiManifest));
+    EslWifiManifest *manifest = (EslWifiManifest *)ps_malloc(sizeof(EslWifiManifest));
     if (manifest == nullptr) manifest = (EslWifiManifest *)malloc(sizeof(EslWifiManifest));
     if (manifest == nullptr) {
         displayError("plugin fetch failed", true);
@@ -1230,9 +1191,7 @@ static void esl_wifi_plugins(EslSession *sess, const EslTarget *target) {
     auto refresh = [&]() {
         drawMainBorderWithTitle("WiFi Plugins");
         displayTextLine("Loading plugins...");
-        if (!esl_wifi_client_fetch_plugins(manifest)) {
-            memset(manifest, 0, sizeof *manifest);
-        }
+        if (!esl_wifi_client_fetch_plugins(manifest)) { memset(manifest, 0, sizeof *manifest); }
     };
     refresh();
 
@@ -1243,16 +1202,14 @@ static void esl_wifi_plugins(EslSession *sess, const EslTarget *target) {
         bool do_refresh = false;
 
         char title[40];
-        snprintf(title, sizeof title, "WiFi Plugins [%s]",
-                 wifiConnected ? "OK" : "off");
+        snprintf(title, sizeof title, "WiFi Plugins [%s]", wifiConnected ? "OK" : "off");
 
         options.clear();
         if (manifest->count == 0) {
             options.push_back({"(no plugins yet)", [&]() { do_refresh = true; }});
         } else {
             for (uint8_t i = 0; i < manifest->count; i++) {
-                options.push_back({manifest->plugins[i].name,
-                                   [i, &plugin_idx]() { plugin_idx = (int)i; }});
+                options.push_back({manifest->plugins[i].name, [i, &plugin_idx]() { plugin_idx = (int)i; }});
             }
         }
         options.push_back({"WiFi Setup", [&]() { do_setup = true; }});
@@ -1284,19 +1241,24 @@ static void esl_wifi_plugins(EslSession *sess, const EslTarget *target) {
 
 static void esl_show_tag_info(const EslTarget *t) {
     char buf[256];
-    snprintf(buf, sizeof(buf),
-             "--- Tag Info ---\n"
-             "Model: %s\n"
-             "Type: %u (%s)\n"
-             "Size: %ux%u\n"
-             "Color: %s\n"
-             "Barcode:\n"
-             "%s",
-             t->profile.model_name ? t->profile.model_name : "Unknown",
-             (unsigned)t->profile.type_code,
-             esl_store_profile_kind_label(t->profile.kind),
-             (unsigned)t->profile.width, (unsigned)t->profile.height,
-             esl_store_profile_color_label(t->profile.color), t->barcode);
+    snprintf(
+        buf,
+        sizeof(buf),
+        "--- Tag Info ---\n"
+        "Model: %s\n"
+        "Type: %u (%s)\n"
+        "Size: %ux%u\n"
+        "Color: %s\n"
+        "Barcode:\n"
+        "%s",
+        t->profile.model_name ? t->profile.model_name : "Unknown",
+        (unsigned)t->profile.type_code,
+        esl_store_profile_kind_label(t->profile.kind),
+        (unsigned)t->profile.width,
+        (unsigned)t->profile.height,
+        esl_store_profile_color_label(t->profile.color),
+        t->barcode
+    );
 
     ScrollableTextArea area = ScrollableTextArea(ESL_UI_APP_NAME);
     area.fromString(buf);
@@ -1324,8 +1286,7 @@ static void esl_rename_tag(EslSession *s, uint8_t idx) {
 
 static bool esl_delete_tag(EslSession *s, uint8_t idx) {
     char body[96];
-    snprintf(body, sizeof(body), "Delete %s and its\nsaved images?",
-             esl_target_label(&s->targets[idx]));
+    snprintf(body, sizeof(body), "Delete %s and its\nsaved images?", esl_target_label(&s->targets[idx]));
     drawMainBorder(true);
     if (displayMessage(body, "Back", nullptr, "Delete", TFT_RED) != 1) return false;
     if (!esl_store_delete_target(s, idx)) return false;
@@ -1344,12 +1305,9 @@ static void esl_target_actions(EslSession *s, uint8_t idx) {
         options.push_back({ESL_TARGET_ACTIONS_ALWAYS[0], [t]() { esl_show_tag_info(t); }});
         options.push_back({ESL_TARGET_ACTIONS_ALWAYS[1], [s, idx]() { esl_rename_tag(s, idx); }});
         if (esl_store_target_supports_graphics(t)) {
-            options.push_back({ESL_TARGET_ACTIONS_GRAPHICS[0],
-                               [s, t]() { esl_set_text(s, t); }});
-            options.push_back({ESL_TARGET_ACTIONS_GRAPHICS[1],
-                               [s, t]() { esl_set_image(s, t); }});
-            options.push_back({ESL_TARGET_ACTIONS_GRAPHICS[2],
-                               [s, t]() { esl_wifi_plugins(s, t); }});
+            options.push_back({ESL_TARGET_ACTIONS_GRAPHICS[0], [s, t]() { esl_set_text(s, t); }});
+            options.push_back({ESL_TARGET_ACTIONS_GRAPHICS[1], [s, t]() { esl_set_image(s, t); }});
+            options.push_back({ESL_TARGET_ACTIONS_GRAPHICS[2], [s, t]() { esl_wifi_plugins(s, t); }});
         }
         options.push_back({ESL_TARGET_ACTIONS_TAIL[0], [t]() { esl_led_test(t); }});
         options.push_back({ESL_TARGET_ACTIONS_TAIL[1], [&]() {
@@ -1400,8 +1358,7 @@ static bool esl_rfid_is_pn532(void) {
 /* Type-2 prefix only: detect + pages 0–11. ESL NDEF lives in 3–10. A full
  * PN532::read() dump is 45–231 pages on the same I2C bus as the T-Embed PMU
  * and is what crashed Scan NFC. */
-static bool esl_pn532_try_ul_prefix(PN532 *pn, uint8_t pages[][4], unsigned cap,
-                                    unsigned *out_n) {
+static bool esl_pn532_try_ul_prefix(PN532 *pn, uint8_t pages[][4], unsigned cap, unsigned *out_n) {
     uint8_t buf[16];
     unsigned got = 0;
     unsigned need;
@@ -1411,9 +1368,7 @@ static bool esl_pn532_try_ul_prefix(PN532 *pn, uint8_t pages[][4], unsigned cap,
     if (pn == nullptr || pages == nullptr || cap == 0u) return false;
     memset(pages, 0, cap * 4u);
 
-    if (!pn->nfc.startPassiveTargetIDDetection(PN532_MIFARE_ISO14443A)) {
-        return false;
-    }
+    if (!pn->nfc.startPassiveTargetIDDetection(PN532_MIFARE_ISO14443A)) { return false; }
     if (!pn->nfc.readDetectedPassiveTargetID()) return false;
     if (pn->nfc.targetUid.sak & 0x20) {
         pn->nfc.inRelease(0);
@@ -1482,13 +1437,11 @@ static void esl_scan_nfc(EslSession *s) {
         memset(pages, 0, sizeof(pages));
         pages_read = 0;
         if (pn != nullptr) {
-            ready = esl_pn532_try_ul_prefix(pn, pages, ESL_NFC_PAGE_CAP,
-                                            &pages_read);
+            ready = esl_pn532_try_ul_prefix(pn, pages, ESL_NFC_PAGE_CAP, &pages_read);
         } else if (rfid->read() == RFIDInterface::SUCCESS) {
             /* Do not wait for pageReadSuccess: a later Classic/NTAG page
              * failure still leaves pages 0–10 in strAllPages. */
-            pages_read = esl_nfc_parse_ul_dump(rfid->strAllPages.c_str(), pages,
-                                               ESL_NFC_PAGE_CAP);
+            pages_read = esl_nfc_parse_ul_dump(rfid->strAllPages.c_str(), pages, ESL_NFC_PAGE_CAP);
             ready = pages_read >= 11u;
             if (!ready) esl_draw_scan_prompt();
         }
@@ -1546,8 +1499,7 @@ static void esl_targeted_menu(EslSession *s) {
         options.push_back({ESL_TARGET_MENU_PREFIX[0], [s]() { esl_scan_nfc(s); }});
         options.push_back({ESL_TARGET_MENU_PREFIX[1], [s]() { esl_type_barcode(s); }});
         for (uint8_t i = 0; i < s->target_count; i++) {
-            options.push_back({esl_target_label(&s->targets[i]),
-                               [s, i]() { esl_target_actions(s, i); }});
+            options.push_back({esl_target_label(&s->targets[i]), [s, i]() { esl_target_actions(s, i); }});
         }
         int sel = loopOptions(options, MENU_TYPE_SUBMENU, ESL_MAIN_ITEMS[1]);
         if (sel < 0) return;
@@ -1568,15 +1520,14 @@ static void esl_pick_frame_repeat(EslSession *s) {
 
 static void esl_settings_menu(EslSession *s) {
     while (true) {
-        String rep = String(ESL_SETTINGS_ITEMS[0]) + "  " +
-                     String((unsigned)s->settings.data_frame_repeats);
+        String rep = String(ESL_SETTINGS_ITEMS[0]) + "  " + String((unsigned)s->settings.data_frame_repeats);
         options = {
-            {rep,                   [&]() { esl_pick_frame_repeat(s); }   },
+            {rep,                   [&]() { esl_pick_frame_repeat(s); }},
             {ESL_SETTINGS_ITEMS[1], [&]() {
                  s->recent_count = 0;
                  esl_fs_save_recents(s);
                  displayTextLine("Cleared!", true);
-             }},
+             }                      },
         };
         int sel = loopOptions(options, MENU_TYPE_SUBMENU, ESL_MAIN_ITEMS[2]);
         if (sel < 0) return;
