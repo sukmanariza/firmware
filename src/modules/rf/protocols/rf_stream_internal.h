@@ -115,13 +115,15 @@ static inline LevelDuration level_duration_make(bool level, uint32_t duration) {
 }
 
 static inline LevelDuration level_duration_reset() {
-    LevelDuration level_duration;
+    // duration stays indeterminate unless value-initialised, and the struct is
+    // returned by value.
+    LevelDuration level_duration = {};
     level_duration.level = LEVEL_DURATION_RESET;
     return level_duration;
 }
 
 static inline LevelDuration level_duration_wait() {
-    LevelDuration level_duration;
+    LevelDuration level_duration = {};
     level_duration.level = LEVEL_DURATION_WAIT;
     return level_duration;
 }

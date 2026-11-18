@@ -729,8 +729,9 @@ static uint64_t ford_v1_u64_legacy_halves_bswap(const uint8_t key8[8]) {
            (uint64_t)__builtin_bswap32((uint32_t)(stored & 0xFFFFFFFFU));
 }
 
+// Writes 15 bytes: 7 from key1 plus all 8 of data2.
 static void
-    ford_v1_raw14_from_internal_keys(uint64_t key1, uint64_t data2, uint8_t raw14_out[14]) {
+    ford_v1_raw14_from_internal_keys(uint64_t key1, uint64_t data2, uint8_t raw14_out[15]) {
     for(int i = 0; i < 7; i++) {
         raw14_out[i] = (uint8_t)((key1 >> (48 - i * 8)) & 0xFFU);
     }
